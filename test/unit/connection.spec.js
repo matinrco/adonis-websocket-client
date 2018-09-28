@@ -245,7 +245,7 @@ group('Connection', (group) => {
     subscription.emit('hi', 'hello')
 
     await waitFor('close', subscription)
-    assert.deepEqual(subscription._emitBuffer, [{ event: 'hi', data: 'hello' }])
+    assert.deepEqual(subscription._emitBuffer, [{ event: 'hi', data: 'hello', ack: undefined }])
     assert.deepEqual(window.connection.subscriptions, {})
   })
 

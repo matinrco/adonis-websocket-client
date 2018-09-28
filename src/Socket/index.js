@@ -236,11 +236,33 @@ export default class Socket {
   serverAck ({ id, data }) {
     if (this._acks.has(id)) {
       const ack = this._acks.get(id)
-      ack(data)
+      ack(null, data)
       this._acks.delete(id)
     } else {
       if (process.env.NODE_ENV !== 'production') {
         debug('bad ack %s for %s topic', id, this.topic)
+      }
+    }
+  }
+
+  /**
+   * A new ack error received
+   *
+   * @method serverAckError
+   *
+   * @param  {Number}      options.id
+   * @param  {Mixed}       options.message
+   *
+   * @return {void}
+   */
+  serverAckError ({ id, message }) {
+    if (this._acks.has(id)) {
+      const ack = this._acks.get(id)
+      ack(new Error(message))
+      this._acks.delete(id)
+    } else {
+      if (process.env.NODE_ENV !== 'production') {
+        debug('bad error ack %s for %s topic', id, this.topic)
       }
     }
   }
