@@ -56,7 +56,7 @@
     "ws": "^5.0.0"
   },
   "dependencies": {
-    "@adonisjs/websocket-packet": "^1.0.6",
+    "@adonisjs/websocket-packet": "matinrco/adonis-websocket-packet",
     "emittery": "^0.4.0",
     "query-string": "^6.0.0"
   },
