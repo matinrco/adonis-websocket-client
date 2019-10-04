@@ -27,6 +27,8 @@ export default class Socket {
     this.emitter = new Emitter()
     this._state = 'pending'
     this._emitBuffer = []
+    this._acks = new Map()
+    this._nextAckId = 0
   }
 
   /**
@@ -80,7 +82,7 @@ export default class Socket {
     /**
      * Process queued events
      */
-    this._emitBuffer.forEach((buf) => (this.emit(buf.event, buf.data)))
+    this._emitBuffer.forEach((buf) => (this.emit(buf.event, buf.data, buf.ack)))
     this._emitBuffer = []
   }
 
@@ -134,7 +136,7 @@ export default class Socket {
    * @method on
    */
   on (...args) {
-    this.emitter.on(...args)
+    return this.emitter.on(...args)
   }
 
   /* istanbul-ignore */
@@ -144,7 +146,7 @@ export default class Socket {
    * @method once
    */
   once (...args) {
-    this.emitter.once(...args)
+    return this.emitter.once(...args)
   }
 
   /* istanbul-ignore */
@@ -154,7 +156,7 @@ export default class Socket {
    * @method off
    */
   off (...args) {
-    this.emitter.off(...args)
+    return this.emitter.off(...args)
   }
 
   /**
@@ -162,18 +164,25 @@ export default class Socket {
    *
    * @method emit
    *
-   * @param  {String} event
-   * @param  {Mixed} data
+   * @param  {String}   event
+   * @param  {Mixed}    data
+   * @param  {Function} ack
    *
    * @return {void}
    */
-  emit (event, data) {
+  emit (event, data, ack) {
     if (this.state === 'pending') {
-      this._emitBuffer.push({ event, data })
+      this._emitBuffer.push({ event, data, ack })
       return
     }
 
-    this.connection.sendEvent(this.topic, event, data)
+    let id
+    if (typeof (ack) === 'function') {
+      id = this._nextAckId++
+      this._acks.set(id, ack)
+    }
+
+    this.connection.sendEvent(this.topic, event, data, id)
   }
 
   /**
@@ -191,10 +200,12 @@ export default class Socket {
       .then(() => {
         this._emitBuffer = []
         this.emitter.clearListeners()
+        this._acks.clear()
       })
       .catch(() => {
         this._emitBuffer = []
         this.emitter.clearListeners()
+        this._acks.clear()
       })
   }
 
@@ -206,10 +217,54 @@ export default class Socket {
    * @param  {String}    options.event
    * @param  {Mixed}    options.data
    *
-   * @return {void}
+   * @return {Promise}
    */
   serverEvent ({ event, data }) {
-    this.emitter.emit(event, data)
+    return this.emitter.emit(event, data)
+  }
+
+  /**
+   * A new ack received
+   *
+   * @method serverAck
+   *
+   * @param  {Number}      options.id
+   * @param  {Mixed}       options.data
+   *
+   * @return {void}
+   */
+  serverAck ({ id, data }) {
+    if (this._acks.has(id)) {
+      const ack = this._acks.get(id)
+      ack(null, data)
+      this._acks.delete(id)
+    } else {
+      if (process.env.NODE_ENV !== 'production') {
+        debug('bad ack %s for %s topic', id, this.topic)
+      }
+    }
+  }
+
+  /**
+   * A new ack error received
+   *
+   * @method serverAckError
+   *
+   * @param  {Number}      options.id
+   * @param  {Mixed}       options.message
+   *
+   * @return {void}
+   */
+  serverAckError ({ id, message }) {
+    if (this._acks.has(id)) {
+      const ack = this._acks.get(id)
+      ack(new Error(message))
+      this._acks.delete(id)
+    } else {
+      if (process.env.NODE_ENV !== 'production') {
+        debug('bad error ack %s for %s topic', id, this.topic)
+      }
+    }
   }
 
   /**

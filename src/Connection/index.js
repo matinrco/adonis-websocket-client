@@ -417,6 +417,22 @@ export default class Connection extends Emitter {
       return
     }
 
+    if (wsp.isAckPacket(packet)) {
+      if (process.env.NODE_ENV !== 'production') {
+        debug('ack packet')
+      }
+      this._handleAck(packet)
+      return
+    }
+
+    if (wsp.isAckErrorPacket(packet)) {
+      if (process.env.NODE_ENV !== 'production') {
+        debug('ack error packet')
+      }
+      this._handleAckError(packet)
+      return
+    }
+
     if (wsp.isPongPacket(packet)) {
       if (process.env.NODE_ENV !== 'production') {
         debug('pong packet')
@@ -552,7 +568,50 @@ export default class Connection extends Emitter {
    * @private
    */
   _handleEvent (packet) {
-    this._ensureSubscription(packet, (socket, packet) => socket.serverEvent(packet.d))
+    this._ensureSubscription(packet, (socket, packet) => {
+      const result = socket.serverEvent(packet.d)
+
+      if (typeof (packet.d.id) !== 'undefined') {
+        result
+          .then((responses) => {
+            const data = responses.find((response) => typeof (response) !== 'undefined')
+            this._sendAckPacket(packet.d.topic, packet.d.id, data)
+          })
+          .catch((error) => {
+            this._sendAckErrorPacket(packet.d.topic, packet.d.id, error.message)
+          })
+      }
+    })
+  }
+
+  /**
+   * Handles when server needs the ack for event
+   *
+   * @method _handleAck
+   *
+   * @param  {Object}           packet
+   *
+   * @return {void}
+   *
+   * @private
+   */
+  _handleAck (packet) {
+    this._ensureSubscription(packet, (socket, packet) => socket.serverAck(packet.d))
+  }
+
+  /**
+   * Handles when server needs the ack for event
+   *
+   * @method _handleAckError
+   *
+   * @param  {Object}           packet
+   *
+   * @return {void}
+   *
+   * @private
+   */
+  _handleAckError (packet) {
+    this._ensureSubscription(packet, (socket, packet) => socket.serverAckError(packet.d))
   }
 
   /**
@@ -571,6 +630,42 @@ export default class Connection extends Emitter {
       debug('initiating subscription for %s topic with server', topic)
     }
     this.sendPacket(wsp.joinPacket(topic))
+  }
+
+  /**
+   * Sends the ack packet, when the client requested the
+   * response for given event.
+   *
+   * @method sendAckPacket
+   *
+   * @param  {String}  topic
+   * @param  {Number}  id
+   * @param  {Mixed}   data
+   *
+   * @return {void}
+   *
+   * @private
+   */
+  _sendAckPacket (topic, id, data) {
+    this.sendPacket(wsp.ackPacket(topic, id, data))
+  }
+
+  /**
+   * Sends the ack packet, when the client requested the
+   * response for given event.
+   *
+   * @method sendAckErrorPacket
+   *
+   * @param  {String}  topic
+   * @param  {Number}  id
+   * @param  {String}  message
+   *
+   * @return {void}
+   *
+   * @private
+   */
+  _sendAckErrorPacket (topic, id, message) {
+    this.sendPacket(wsp.ackErrorPacket(topic, id, message))
   }
 
   /**
@@ -702,14 +797,15 @@ export default class Connection extends Emitter {
    *
    * @param  {String}  topic
    * @param  {String}  event
-   * @param  {Mixed}  data
+   * @param  {Mixed}   data
+   * @param  {Number}  [id]
    *
    * @return {void}
    *
    * @throws {Error} If topic or event are not passed
    * @throws {Error} If there is no active subscription for the given topic
    */
-  sendEvent (topic, event, data) {
+  sendEvent (topic, event, data, id) {
     if (!topic || !event) {
       throw new Error('topic and event name is required to call sendEvent method')
     }
@@ -739,7 +835,7 @@ export default class Connection extends Emitter {
       debug('sending event on %s topic', topic)
     }
 
-    this.sendPacket(wsp.eventPacket(topic, event, data))
+    this.sendPacket(wsp.eventPacket(topic, event, data, id))
   }
 
   /**
