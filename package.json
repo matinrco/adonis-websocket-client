@@ -37,7 +37,7 @@
     "chalk": "^2.3.2",
     "cz-conventional-changelog": "^2.1.0",
     "got": "^8.3.0",
-    "karma": "^2.0.0",
+    "karma": "^6.4.1",
     "karma-chrome-launcher": "^2.2.0",
     "karma-japa": "^1.0.2",
     "karma-rollup-preprocessor": "^6.0.0",
